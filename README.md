@@ -1,6 +1,6 @@
 # youtube_down
 
-A new Flutter project.
+App to download audio or video from youtube
 
 ## Getting Started
 
