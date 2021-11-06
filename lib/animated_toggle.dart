@@ -38,7 +38,9 @@ class _AnimatedToggleState extends State<AnimatedToggle> {
               widget.onToggleCallback(index);
               setState(() {});
             },
+            // ? container inner toggle
             child: Container(
+              margin: EdgeInsets.symmetric(horizontal: Get.width * 0.02),
               // width: Get.width * 0.6,
               height: height_toggle,
               decoration: ShapeDecoration(
@@ -59,7 +61,7 @@ class _AnimatedToggleState extends State<AnimatedToggle> {
                         fontFamily: 'Rubik',
                         fontSize: Get.width * 0.045,
                         fontWeight: FontWeight.bold,
-                        color: Color(0xFFE88493),
+                        color: const Color(0xFFE88493),
                       ),
                     ),
                   ),
@@ -72,8 +74,10 @@ class _AnimatedToggleState extends State<AnimatedToggle> {
             curve: Curves.decelerate,
             alignment:
                 initialPosition ? Alignment.centerLeft : Alignment.centerRight,
+            // ? container toogle
             child: Container(
-              width: Get.width * 0.33,
+              margin: EdgeInsets.symmetric(horizontal: Get.width * 0.02),
+              width: Get.width * 0.3,
               height: height_toggle,
               decoration: ShapeDecoration(
                 color: widget.buttonColor,
