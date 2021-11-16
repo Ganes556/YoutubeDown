@@ -1,11 +1,16 @@
+import 'dart:convert';
 import 'dart:io';
 
+import 'package:http/http.dart' as http;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:youtube_down/Style/my_colors.dart';
+import 'package:youtube_down/Style/text_style.dart';
+import 'package:youtube_down/models/youtube.dart';
 import 'animated_toggle.dart';
 import 'package:get/get.dart';
+import 'package:dio/dio.dart';
 
 void main() => runApp(MyApp());
 
@@ -33,72 +38,58 @@ class HomeMain extends StatefulWidget {
 }
 
 class _HomeMainState extends State<HomeMain> {
-  final txt = TextEditingController();
+  final videoURL = TextEditingController();
+  var datas = {};
   int _toggleValue = 0;
-  bool _urlNotValid = false;
   bool freeze = false;
   String title = "";
+
+  Map<String, String> headers = {
+    "X-Requested-With": "XMLHttpRequest",
+  };
+
+  Map<String, String>? body;
+  void insertBody(String videoURL) {
+    body = {"url": videoURL, "ajax": "1"};
+  }
 
   @override
   void dispose() {
     // * Clean up the controller when the widget is disposed.
-    txt.dispose();
+    videoURL.dispose();
     super.dispose();
   }
 
-  // ? get Id
-  String getIdVid(url) {
-    try {
-      var uri = Uri.parse(url.text.trim());
-      String idVid = "";
-      if (uri.isScheme("https") && uri.host.contains("youtube")) {
-        if (uri.queryParameters.keys.first == "v" &&
-            uri.queryParameters.values.first.isNotEmpty) {
-          idVid = uri.queryParameters.values.first;
-        }
-      }
-      return idVid;
-    } on Exception {
-      return "";
-    }
-  }
-
-  // ? text field action each user typing something
-  void mainActionTextChanged() {
-    String idVid = getIdVid(txt);
-
-    if (idVid.isNotEmpty) {
-      ytActionTextChanged(idVid);
-      setState(() {
-        title = "Tunggu...";
-      });
-      _urlNotValid = false;
-    } else {
-      reset();
-    }
-  }
-
   // ? action text changed
-  Future<void> ytActionTextChanged(String idVid) async {
+  Future<void> ytActionTextChanged() async {
+    insertBody(videoURL.text);
+    setState(() {
+      title = "Tunggu...";
+    });
+
     try {
-      var yt = YoutubeExplode();
-      var metadata = await yt.videos.get(idVid);
-      // ? get
-      setState(() {
-        var temp = metadata.duration.toString().split(":");
-        var duration =
-            "Durasi: ${temp[0]} jam ${temp[1]} menit ${double.parse(temp[2]).ceil()} detik";
-        title = metadata.title + "\n" + duration;
-        _urlNotValid = false;
-      });
-      yt.close();
+      var response = await http.post(
+          Uri.parse("https://www.y2mate.com/mates/downloader/ajax"),
+          body: {"url": videoURL.text, "ajax": "1"},
+          headers: headers);
+
+      var data = jsonDecode(response.body);
+      if (response.statusCode == 200) {
+        datas = Result.convertResult(data["result"]);
+        setState(() {
+          String temp = datas["duration"].split(":");
+          var duration =
+              "Durasi: ${temp[0]} jam ${temp[1]} menit ${double.parse(temp[2]).ceil()} detik";
+          title = datas["v_title"] + "\n" + duration;
+        });
+      }
     } on SocketException catch (e) {
       setState(() {
         title = "Pastikan Anda terhubung dengan internet!";
       });
     } catch (e) {
       setState(() {
-        title = "Tidak ditemukan!";
+        title = "Url tidak valid!";
       });
     }
   }
@@ -107,164 +98,169 @@ class _HomeMainState extends State<HomeMain> {
   void reset({bool clear = false}) {
     setState(() {
       if (clear) {
-        txt.clear();
+        videoURL.clear();
       }
       title = "Url tidak valid!";
-      _urlNotValid = true;
     });
-  }
-
-  // ? btnDownloadMainAction
-  void btnDownloadMainAction(BuildContext context) {
-    String idVid = getIdVid(txt);
-
-    if (idVid.isNotEmpty) {
-      ytBtnDownloadAction(idVid);
-      // ? wait
-      setState(() {
-        title = "Tunggu...";
-        freeze = true;
-      });
-      // _urlNotValid = false;
-    } else {
-      reset();
-    }
   }
 
   // ? ytDownloadAction
-  Future<void> ytBtnDownloadAction(String idVid) async {
-    // ? get status permission
-    var status = await Permission.storage.status;
-    if (status.isDenied) await Permission.storage.request();
-    var yt = YoutubeExplode();
-    var metadata = await yt.videos.get(idVid);
-    var manifest = await yt.videos.streamsClient.getManifest(idVid);
-    var streams;
-    // * audio
-    if (_toggleValue == 0) {
-      streams = manifest.audioOnly.withHighestBitrate();
+  Future<void> ytBtnDownloadAction() async {
+    try {
+      // * default audio
+      var bodies = {
+        "type": "youtube",
+        "_id": datas['id'],
+        "v_id": datas['v_id'],
+        "ajax": "1",
+        "token": "",
+        "ftype": "mp3",
+        "fquality": "128",
+      };
       // * video
-    } else {
-      streams = manifest.muxed.withHighestBitrate();
-    }
-    var fileName = '${metadata.title}.${streams.container.name.toString()}'
-        .replaceAll(r'\', '')
-        .replaceAll('/', '')
-        .replaceAll('*', '')
-        .replaceAll('?', '')
-        .replaceAll('"', '')
-        .replaceAll('<', '')
-        .replaceAll('>', '')
-        .replaceAll('|', '');
+      if (_toggleValue == 1) {
+        bodies["ftype"] = "mp4";
+        bodies["fquality"] = "480";
+      }
 
-    Directory('/storage/emulated/0/Download/YoutubeDown/').createSync();
+      var response = await http.post(
+          Uri.parse("https://www.y2mate.com/mates/convert"),
+          body: bodies);
 
-    var file = File('/storage/emulated/0/Download/YoutubeDown/$fileName');
-    if (file.existsSync()) {
-      file.deleteSync();
-    }
-
-    // ? progress info
-    var len = streams.size.totalBytes;
-    var count = 0;
-
-    var output = file.openWrite(mode: FileMode.writeOnlyAppend);
-    var stream = yt.videos.streamsClient.get(streams);
-
-    await for (final data in stream) {
-      count += data.length;
+      String tempUrl = RegExp(r'"http.*?"')
+          .stringMatch(response.body)
+          .toString()
+          .replaceAll('"', "");
+      if (tempUrl == "null") {
+        setState(() {
+          title = "Coba lagi nanti!";
+        });
+        return;
+      }
+      String urlDownload = Uri.decodeFull(tempUrl);
+      downloadVideo(urlDownload.replaceAll("\\", ""));
+    } catch (e) {
       setState(() {
-        int persen = ((count / len) * 100).ceil();
-        title = "Mengunduh...$persen%";
+        title = "Coba lagi nanti!";
       });
-      // ? add data stream into the file
-      output.add(data);
     }
-
-    await showDialog(
-      context: context,
-      builder: (context) => Dialog(
-        backgroundColor: Colors.transparent,
-        child: Container(
-          padding: EdgeInsets.all(MediaQuery.of(context).size.width * 0.04),
-          width: double.infinity,
-          height: Get.height * 0.4,
-          decoration: BoxDecoration(
-            border: Border.all(color: Colors.white, width: 2.0),
-            borderRadius: BorderRadius.circular(8),
-            color: const Color(0xff730006),
-          ),
-          child: Column(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                SizedBox(
-                  width: double.infinity * 0.2,
-                  child: ElevatedButton(
-                    onPressed: null,
-                    child: Text(
-                      "Pemberitahuan",
-                      style: GoogleFonts.robotoMono(
-                        textStyle: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                    style: ButtonStyle(
-                      shape: MaterialStateProperty.all<RoundedRectangleBorder>(
-                        const RoundedRectangleBorder(
-                          borderRadius: BorderRadius.all(Radius.circular(8.0)),
-                        ),
-                      ),
-                      backgroundColor: MaterialStateProperty.all<Color>(
-                          const Color(0xffCA3248).withOpacity(0.74)),
-                      padding: MaterialStateProperty.all<EdgeInsets>(
-                          EdgeInsets.symmetric(vertical: 10)),
-                    ),
-                  ),
-                ),
-                // ? text
-                Text(
-                  'Unduh selesai, audio atau video secara otomatis disimpan pada penyimpanan internal di folder Download/YoutubeDown/',
-                  style: GoogleFonts.robotoMono(
-                    textStyle: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16),
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                // ? closed btn
-                ElevatedButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: Text(
-                    "Tutup",
-                    style: GoogleFonts.robotoMono(
-                      textStyle: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 18),
-                    ),
-                  ),
-                  style: TextButton.styleFrom(
-                    backgroundColor: Color(0xffBD3347).withOpacity(0.67),
-                  ),
-                ),
-              ]),
-        ),
-      ),
-    );
-    setState(() {
-      title = "";
-      freeze = false;
-    });
-
-    await output.flush();
-    await output.close();
-    yt.close();
   }
 
+  Future<void> downloadVideo(urlDownload) async {
+    setState(() {
+      title = "Tunggu...";
+      freeze = true;
+    });
+    var status = await Permission.storage.status;
+    if (status.isDenied) await Permission.storage.request();
+    try {
+      Dio dio = Dio();
+      var fileName = (_toggleValue == 0)
+          ? "${datas['v_title']}.mp3"
+          : "${datas['v_title']}'.mp4";
+      Directory('/storage/emulated/0/Download/YoutubeDown/').createSync();
+      var file = File('/storage/emulated/0/Download/YoutubeDown/$fileName');
+      if (file.existsSync()) {
+        file.deleteSync();
+      }
+      await dio.download(
+        urlDownload,
+        "/storage/emulated/0/Download/YoutubeDown/$fileName",
+        onReceiveProgress: (rec, total) => {
+          setState(() {
+            title =
+                "Mengunduh..." + ((rec / total) * 100).toStringAsFixed(0) + "%";
+          })
+        },
+      );
+      await showDialog(
+        context: context,
+        builder: (context) => Dialog(
+          backgroundColor: Colors.transparent,
+          child: Container(
+            padding: EdgeInsets.all(MediaQuery.of(context).size.width * 0.04),
+            width: double.infinity,
+            height: Get.height * 0.4,
+            decoration: BoxDecoration(
+              border: Border.all(color: Colors.white, width: 2.0),
+              borderRadius: BorderRadius.circular(8),
+              color: const Color(0xff730006),
+            ),
+            child: Column(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  SizedBox(
+                    width: double.infinity * 0.2,
+                    child: ElevatedButton(
+                      onPressed: null,
+                      child: Text(
+                        "Pemberitahuan",
+                        style: GoogleFonts.robotoMono(
+                          textStyle: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                      style: ButtonStyle(
+                        shape:
+                            MaterialStateProperty.all<RoundedRectangleBorder>(
+                          const RoundedRectangleBorder(
+                            borderRadius:
+                                BorderRadius.all(Radius.circular(8.0)),
+                          ),
+                        ),
+                        backgroundColor: MaterialStateProperty.all<Color>(
+                            primary500.withOpacity(0.74)),
+                        padding: MaterialStateProperty.all<EdgeInsets>(
+                            const EdgeInsets.symmetric(vertical: 10)),
+                      ),
+                    ),
+                  ),
+                  // ? text
+                  Text(
+                    'Unduh selesai ^_^, audio atau video secara otomatis disimpan pada penyimpanan internal di folder Download/YoutubeDown/',
+                    style: GoogleFonts.robotoMono(
+                      textStyle: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16),
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  // ? closed btn
+                  ElevatedButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: Text(
+                      "Tutup",
+                      style: GoogleFonts.robotoMono(
+                        textStyle: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 18),
+                      ),
+                    ),
+                    style: TextButton.styleFrom(
+                      backgroundColor: primary500.withOpacity(0.67),
+                    ),
+                  ),
+                ]),
+          ),
+        ),
+      );
+      setState(() {
+        title = "";
+        freeze = false;
+      });
+    } catch (e) {
+      setState(() {
+        title = "Coba lagi nanti!";
+      });
+    }
+  }
+
+  // ! main
   @override
   Widget build(BuildContext context) {
     const gap = SizedBox(height: 20);
@@ -308,16 +304,12 @@ class _HomeMainState extends State<HomeMain> {
     var textDownload = Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        Text(
+        RobotoMonoText(
           'Unduh ',
           textAlign: TextAlign.center,
-          style: GoogleFonts.robotoMono(
-            textStyle: const TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.w700,
-              fontSize: 30,
-            ),
-          ),
+          color: Colors.white,
+          fontWeight: FontWeight.w700,
+          fontSize: 30,
         ),
         (_toggleValue == 0)
             ? const Icon(Icons.headphones_outlined,
@@ -327,17 +319,12 @@ class _HomeMainState extends State<HomeMain> {
       ],
     );
     // ? text title
-    var textTitle = Text(
+    var textTitle = RobotoMonoText(
       (title != "") ? title : "",
-      overflow: TextOverflow.visible,
       textAlign: TextAlign.center,
-      style: GoogleFonts.robotoMono(
-        textStyle: const TextStyle(
-          color: Colors.white,
-          fontWeight: FontWeight.w700,
-          fontSize: 18,
-        ),
-      ),
+      color: Colors.white,
+      fontWeight: FontWeight.w700,
+      fontSize: 18,
     );
     return {
       "textDownload": textDownload,
@@ -350,9 +337,7 @@ class _HomeMainState extends State<HomeMain> {
     // * hint style
     var hintStyle = GoogleFonts.roboto(
         textStyle: const TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.w400,
-            color: Color(0xFFE88493)));
+            fontSize: 18, fontWeight: FontWeight.w400, color: primary300));
     // * outline border
     var outLineBorder = OutlineInputBorder(
         borderSide: BorderSide.none, borderRadius: BorderRadius.circular(5));
@@ -366,19 +351,19 @@ class _HomeMainState extends State<HomeMain> {
         enabled: (freeze) ? !freeze : true,
         style: const TextStyle(color: Colors.white),
         textAlign: TextAlign.left,
-        onChanged: (v) => mainActionTextChanged(),
-        controller: txt,
+        onChanged: (v) => ytActionTextChanged(), // mainActionTextChanged(),
+        controller: videoURL,
         decoration: InputDecoration(
           // errorText: _urlNotValid ? "Url not valid!" : null,
           border: outLineBorder,
           suffixIcon: IconButton(
             onPressed: () => reset(clear: true),
             color: Colors.white,
-            icon: Icon(Icons.clear),
+            icon: const Icon(Icons.clear),
           ),
           // ? alignment content of textfield
           contentPadding: contentPadding,
-          fillColor: const Color(0xFFEF4A62),
+          fillColor: primary400,
           filled: true,
           hintText: "Tempel Urlnya Disini",
           hintStyle: hintStyle,
@@ -393,13 +378,14 @@ class _HomeMainState extends State<HomeMain> {
       child: ElevatedButton(
         style: TextButton.styleFrom(
             primary: Colors.white,
-            backgroundColor: Color(0xFFEF4A62),
+            backgroundColor: primary400,
             minimumSize: Size(Get.width * 0.2361111111111111, Get.width / 8)),
-        onPressed: () => btnDownloadMainAction(context),
+        onPressed: () =>
+            ytBtnDownloadAction(), // btnDownloadMainAction(context)
         child: Text(
           "Unduh",
           style: GoogleFonts.roboto(
-            textStyle: TextStyle(
+            textStyle: const TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.w400,
             ),
