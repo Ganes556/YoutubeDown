@@ -1,2 +1,5 @@
-perubahan request di api Y2Mate
+#perubahan request di api Y2Mate
 fetch("https://www.y2mate.com/mates/convert", {method:"POST", headers: {'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'}, body: "type=youtube&_id=61ee5a2f10a97582348b45d8&v_id=iXH6zdvhN80&ajax=1&token=&ftype=mp3&fquality=128"}).then(e => e.text()).then(e => console.log(e))
+
+#link referensi send request with header in http flutter
+https://stackoverflow.com/questions/50278258/http-post-with-json-on-body-flutter-dart
